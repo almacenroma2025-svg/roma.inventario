@@ -776,7 +776,7 @@ textarea{resize:vertical;min-height:75px}
             </div>
           </div>
           <table>
-            <thead><tr><th>Código</th><th>Equipo</th><th>Proyecto / Tipo</th><th>Responsable</th><th>Salida</th><th>Ingreso</th><th>Días</th><th>Tarifa/día</th><th>Total</th>${currentUser&&currentUser.rol==='admin'?'<th>Acc.</th>':''}</tr></thead>
+            <thead><tr><th>Código</th><th>Equipo</th><th>Proyecto / Tipo</th><th>Responsable</th><th>Salida</th><th>Ingreso</th><th>Días</th><th>Tarifa/día</th><th>Total</th><th id="ru-acc-col"></th></tr></thead>
             <tbody id="ru-cerrados-tbody"></tbody>
           </table>
         </div>
@@ -879,31 +879,31 @@ get(dbRef).then(snapshot=>{
   }
   // Escuchar cambios en tiempo real
   onValue(dbRef, snapshot=>{
-    if(snapshot.exists()){
-      const remoto = asegurarDB(snapshot.val());
-      db = remoto;
-      window.db = remoto;
-      // Refrescar la vista actual si hay sesión activa
-      if(currentUser){
-        const secActiva = document.querySelector('.section.active');
-        if(secActiva){
-          const id = secActiva.id.replace('sec-','');
-          if(id==='dashboard') renderDashboard();
-          else if(id==='equipos') renderEquipos();
-          else if(id==='stock') renderStock();
-          else if(id==='epp') renderEpp();
-          else if(id==='historial') renderHistorial();
-          else if(id==='historial-asignaciones') renderHistAsignaciones();
-          else if(id==='registro-uso') renderRegistroUso();
-          else if(id==='ingreso') limpiarIngreso();
-          else if(id==='salida') limpiarSalida();
-          else if(id==='reporte') renderReporte();
-          else if(id==='asignar-epp') renderAsignarEpp();
-        }
-        updateStockBadge();
-        updateEppBadge();
-      }
-    }
+    if(!snapshot.exists()) return;
+    const remoto = asegurarDB(snapshot.val());
+    // Actualizar la referencia local Y la global
+    db = remoto;
+    window.db = remoto;
+    if(!currentUser) return;
+    // Refrescar la sección activa
+    const secActiva = document.querySelector('.section.active');
+    if(!secActiva) return;
+    const id = secActiva.id.replace('sec-','');
+    const renderMap = {
+      'dashboard': renderDashboard,
+      'equipos': renderEquipos,
+      'stock': renderStock,
+      'epp': renderEpp,
+      'historial': renderHistorial,
+      'historial-asignaciones': renderHistAsignaciones,
+      'registro-uso': renderRegistroUso,
+      'reporte': renderReporte,
+      'asignar-epp': renderAsignarEpp,
+      'historial-asignaciones': renderHistAsignaciones
+    };
+    if(renderMap[id]) renderMap[id]();
+    updateStockBadge();
+    updateEppBadge();
   });
   // Mostrar login
   mostrarLogin();
@@ -1061,15 +1061,15 @@ window.dlCSV = dlCSV;
 window.renderHistEpp = renderHistEpp;
 window.limpiarFiltrosHistEpp = limpiarFiltrosHistEpp;
 
-// Proxy para mantener db sincronizado globalmente
+// Sincronizar db y currentUser con window en tiempo real
 Object.defineProperty(window, 'db', {
-  get: () => db,
-  set: (v) => { db = v; },
+  get: function(){ return db; },
+  set: function(v){ db = v; },
   configurable: true
 });
 Object.defineProperty(window, 'currentUser', {
-  get: () => currentUser,
-  set: (v) => { currentUser = v; },
+  get: function(){ return currentUser; },
+  set: function(v){ currentUser = v; },
   configurable: true
 });
 
@@ -1992,24 +1992,24 @@ function renderRegistroUso(){
 function renderActivos(){
   const regs=(db.registroUso||[]).filter(r=>r.estado==='activo');
   const tbody=el('ru-activos-tbody');
+  const isAdmin=currentUser&&currentUser.rol==='admin';
   if(!regs.length){ tbody.innerHTML='<tr><td colspan="9" class="empty-state">No hay equipos en uso actualmente.</td></tr>'; return; }
-  tbody.innerHTML=regs.map(r=>{
+  tbody.innerHTML=regs.map(function(r){
     const dias=diasEntre(r.fechaSalida, today());
     const valor=r.tarifa?r.tarifa*dias:0;
-    return`<tr>
-      <td><b style="font-size:12px">${r.codigo}</b></td>
-      <td>${r.nombre}</td>
-      <td>${motivoBadge(r.motivo)} ${r.proyecto||'—'}</td>
-      <td>${r.responsable}</td>
-      <td>${r.fechaSalida}</td>
-      <td style="text-align:center;font-weight:700;color:#1a4d6e">${dias}</td>
-      <td style="text-align:center">${fmtCOP(r.tarifa)}</td>
-      <td style="text-align:right;font-weight:700;color:${valor?'#3B6D11':'#aaa'}">${fmtCOP(valor)}</td>
-      <td>
-        <button class="btn-sm btn-edit" onclick="cerrarRegistroManual(${r.id})" title="Cerrar registro manualmente">✅ Cerrar</button>
-        ${currentUser&&currentUser.rol==='admin'?`<button class="btn-sm btn-danger" onclick="borrarRegistroUso(${r.id})" style="margin-left:4px;font-size:11px">🗑</button>`:''}
-      </td>
-    </tr>`;
+    let fila='<tr>';
+    fila+='<td><b style="font-size:12px">'+r.codigo+'</b></td>';
+    fila+='<td>'+r.nombre+'</td>';
+    fila+='<td>'+motivoBadge(r.motivo)+' '+(r.proyecto||'—')+'</td>';
+    fila+='<td>'+(r.responsable||'—')+'</td>';
+    fila+='<td>'+(r.fechaSalida||'—')+'</td>';
+    fila+='<td style="text-align:center;font-weight:700;color:#1a4d6e">'+dias+'</td>';
+    fila+='<td style="text-align:center">'+fmtCOP(r.tarifa)+'</td>';
+    fila+='<td style="text-align:right;font-weight:700;color:'+(valor?'#3B6D11':'#aaa')+'">'+fmtCOP(valor)+'</td>';
+    fila+='<td><button class="btn-sm btn-edit" onclick="cerrarRegistroManual('+r.id+')" title="Cerrar registro manualmente">✅ Cerrar</button>';
+    if(isAdmin) fila+=' <button class="btn-sm btn-danger" onclick="borrarRegistroUso('+r.id+')" style="margin-left:4px;font-size:11px">🗑</button>';
+    fila+='</td></tr>';
+    return fila;
   }).join('');
 }
 
