@@ -2,6 +2,9 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema de Inventario — Bodega</title>
 <style>
@@ -1197,15 +1200,17 @@ function renderDashboard(){
 // ─── EQUIPOS ─────────────────────────────────────────────────────
 function renderEquipos(filtro=''){
   const lista=db.equipos.filter(e=>!filtro||e.nombre.toLowerCase().includes(filtro)||e.codigo.toLowerCase().includes(filtro));
-  el('eq-tbody').innerHTML=lista.length?lista.map(e=>{
+  const _isAdminEq=currentUser&&currentUser.rol==='admin';
+  el('eq-tbody').innerHTML=lista.length?lista.map(function(e){
     const cant=e.cantidad||0;
     const cantColor=cant===0?'#E24B4A':cant<=2?'#854F0B':'#3B6D11';
-    return`<tr>
-      <td><b>${e.codigo}</b></td><td>${e.nombre}</td><td>${e.tipo}</td>
-      <td style="text-align:center;font-weight:700;color:${cantColor}">${cant}</td>
-      <td><span class="badge ${e.estado}">${eqEstadoLabel(e.estado)}</span></td><td>${e.condicion}</td>
-      <td>${currentUser&&currentUser.rol==='admin'?`<button class="btn-sm btn-danger" onclick="elimEq(${e.id})">Eliminar</button>`:'—'}</td>
-    </tr>`;
+    let f='<tr>';
+    f+='<td><b>'+e.codigo+'</b></td><td>'+e.nombre+'</td><td>'+(e.tipo||'')+'</td>';
+    f+='<td style="text-align:center;font-weight:700;color:'+cantColor+'">'+cant+'</td>';
+    f+='<td><span class="badge '+e.estado+'">'+eqEstadoLabel(e.estado)+'</span></td><td>'+(e.condicion||'')+'</td>';
+    f+='<td>'+(_isAdminEq?'<button class="btn-sm btn-danger" onclick="elimEq('+e.id+')">Eliminar</button>':'—')+'</td>';
+    f+='</tr>';
+    return f;
   }).join(''):'<tr><td colspan="7" class="empty-state">Sin equipos. Usa "+ Nuevo equipo" para agregar.</td></tr>';
 }
 function filterEq(v){ renderEquipos(v.toLowerCase()); }
@@ -1411,20 +1416,18 @@ function renderStock(){
   const isAdmin=currentUser&&currentUser.rol==='admin';
   const ec=el('stock-edit-col');
   if(ec) ec.style.display=isAdmin?'':'none';
-  el('stock-tbody').innerHTML=lista.length?lista.map(s=>{
+  el('stock-tbody').innerHTML=lista.length?lista.map(function(s){
     const bajo=s.enBodega<s.stockMinimo;
-    return`<tr>
-      <td><b style="font-size:12px">${s.codigo}</b></td>
-      <td style="max-width:260px;font-size:13px">${s.descripcion}</td>
-      <td>${s.unidad}</td>
-      <td style="text-align:center;font-weight:600;color:${bajo?'#E24B4A':'#3B6D11'}">${s.enBodega}</td>
-      <td style="text-align:center">${s.stockMinimo}</td>
-      <td><span class="badge ${bajo?'alerta':'ok-stock'}">${bajo?'⚠ Bajo':'OK'}</span></td>
-      ${isAdmin?`<td>
-        <input type="number" class="edit-input" value="${s.enBodega}" min="0" onchange="ajustarStock(${s.id},this.value,'bodega')" title="Stock en bodega">
-        <input type="number" class="min-input" value="${s.stockMinimo}" min="0" onchange="ajustarStock(${s.id},this.value,'minimo')" title="Stock mínimo">
-      </td>`:''}
-    </tr>`;
+    let f='<tr>';
+    f+='<td><b style="font-size:12px">'+s.codigo+'</b></td>';
+    f+='<td style="max-width:260px;font-size:13px">'+s.descripcion+'</td>';
+    f+='<td>'+s.unidad+'</td>';
+    f+='<td style="text-align:center;font-weight:600;color:'+(bajo?'#E24B4A':'#3B6D11')+'">'+s.enBodega+'</td>';
+    f+='<td style="text-align:center">'+s.stockMinimo+'</td>';
+    f+='<td><span class="badge '+(bajo?'alerta':'ok-stock')+'">'+(bajo?'⚠ Bajo':'OK')+'</span></td>';
+    if(isAdmin) f+='<td><input type="number" class="edit-input" value="'+s.enBodega+'" min="0" onchange="ajustarStock('+s.id+',this.value,'bodega')" title="Stock en bodega"><input type="number" class="min-input" value="'+s.stockMinimo+'" min="0" onchange="ajustarStock('+s.id+',this.value,'minimo')" title="Stock mínimo"></td>';
+    f+='</tr>';
+    return f;
   }).join(''):'<tr><td colspan="7" class="empty-state">Sin resultados.</td></tr>';
 }
 function filterStock(v){ stockBusqueda=v; renderStock(); }
@@ -1494,26 +1497,26 @@ function renderHistorial(){
   const tipoColor={entrada:'#3B6D11',salida:'#A32D2D',retorno:'#0C447C',ajuste:'#854F0B'};
   const tipoBg={entrada:'#EAF3DE',salida:'#FCEBEB',retorno:'#E6F1FB',ajuste:'#FAEEDA'};
 
-  c.innerHTML=lista.map((m,i)=>`
-    <div class="hist-item" id="mov-${m.id||i}" style="transition:background .2s">
-      <div class="hdot ${m.tipo}"></div>
-      <div class="hinfo" style="flex:1">
-        <div class="htit" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span><b>${m.codigo||'—'}</b> — ${m.equipo||'—'}</span>
-            <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${tipoBg[m.tipo]||'#eee'};color:${tipoColor[m.tipo]||'#555'}">${tipoLabel[m.tipo]||m.tipo}</span>
-          </div>
-          ${isAdmin?`<button onclick="borrarMovimiento(${m.id||i},'${m.id?'id':'idx'}')" style="background:none;border:1px solid #F7C1C1;color:#A32D2D;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;white-space:nowrap;font-family:inherit" title="Borrar este movimiento">🗑 Borrar</button>`:''}
-        </div>
-        <div class="hdet" style="margin-top:3px">
-          <span style="color:#1a4d6e">📅 ${m.fecha||''}</span>
-          <span style="margin:0 6px;color:#ddd">|</span>
-          <span>👤 ${m.responsable||'—'}</span>
-          <span style="margin:0 6px;color:#ddd">|</span>
-          <span>${m.detalle||''}${m.obs?' · <i style="color:#aaa">'+m.obs+'</i>':''}</span>
-        </div>
-      </div>
-    </div>`).join('');
+  c.innerHTML=lista.map(function(m,i){
+    let html='<div class="hist-item" id="mov-'+(m.id||i)+'" style="transition:background .2s">';
+    html+='<div class="hdot '+(m.tipo||'')+'"></div>';
+    html+='<div class="hinfo" style="flex:1">';
+    html+='<div class="htit" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between">';
+    html+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+    html+='<span><b>'+(m.codigo||'—')+'</b> — '+(m.equipo||'—')+'</span>';
+    html+='<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:'+(tipoBg[m.tipo]||'#eee')+';color:'+(tipoColor[m.tipo]||'#555')+'">'+(tipoLabel[m.tipo]||m.tipo)+'</span>';
+    html+='</div>';
+    if(isAdmin) html+='<button onclick="borrarMovimiento('+(m.id||i)+')" style="background:none;border:1px solid #F7C1C1;color:#A32D2D;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;white-space:nowrap;font-family:inherit">🗑 Borrar</button>';
+    html+='</div>';
+    html+='<div class="hdet" style="margin-top:3px">';
+    html+='<span style="color:#1a4d6e">📅 '+(m.fecha||'')+'</span>';
+    html+='<span style="margin:0 6px;color:#ddd">|</span>';
+    html+='<span>👤 '+(m.responsable||'—')+'</span>';
+    html+='<span style="margin:0 6px;color:#ddd">|</span>';
+    html+='<span>'+(m.detalle||'')+(m.obs?' · <i style="color:#aaa">'+m.obs+'</i>':'')+'</span>';
+    html+='</div></div></div>';
+    return html;
+  }).join('');
 }
 
 function borrarMovimiento(idxOrId, tipo){
@@ -1700,21 +1703,19 @@ function renderEpp(){
   if(busq) lista=lista.filter(e=>e.codigo.toLowerCase().includes(busq)||e.descripcion.toLowerCase().includes(busq));
   const isAdmin=currentUser&&currentUser.rol==='admin';
   const ec=el('epp-edit-col'); if(ec) ec.style.display=isAdmin?'':'none';
-  el('epp-tbody').innerHTML=lista.length?lista.map(e=>{
+  el('epp-tbody').innerHTML=lista.length?lista.map(function(e){
     const bajo=e.enBodega<e.stockMinimo;
-    return`<tr>
-      <td><b style="font-size:12px">${e.codigo}</b></td>
-      <td style="max-width:240px;font-size:13px">${e.descripcion}</td>
-      <td style="text-align:center">${e.talla||'—'}</td>
-      <td>${e.unidad}</td>
-      <td style="text-align:center;font-weight:700;color:${bajo?'#E24B4A':'#3B6D11'}">${e.enBodega}</td>
-      <td style="text-align:center">${e.stockMinimo}</td>
-      <td><span class="badge ${bajo?'alerta':'ok-stock'}">${bajo?'⚠ Bajo':'OK'}</span></td>
-      ${isAdmin?`<td>
-        <input type="number" class="edit-input" value="${e.enBodega}" min="0" onchange="ajustarEpp(${e.id},this.value,'bodega')" title="Stock bodega">
-        <input type="number" class="min-input" value="${e.stockMinimo}" min="0" onchange="ajustarEpp(${e.id},this.value,'minimo')" title="Stock mínimo">
-      </td>`:''}
-    </tr>`;
+    let f='<tr>';
+    f+='<td><b style="font-size:12px">'+e.codigo+'</b></td>';
+    f+='<td style="max-width:240px;font-size:13px">'+e.descripcion+'</td>';
+    f+='<td style="text-align:center">'+(e.talla||'—')+'</td>';
+    f+='<td>'+e.unidad+'</td>';
+    f+='<td style="text-align:center;font-weight:700;color:'+(bajo?'#E24B4A':'#3B6D11')+'">'+e.enBodega+'</td>';
+    f+='<td style="text-align:center">'+e.stockMinimo+'</td>';
+    f+='<td><span class="badge '+(bajo?'alerta':'ok-stock')+'">'+(bajo?'⚠ Bajo':'OK')+'</span></td>';
+    if(isAdmin) f+='<td><input type="number" class="edit-input" value="'+e.enBodega+'" min="0" onchange="ajustarEpp('+e.id+',this.value,'bodega')" title="Stock bodega"><input type="number" class="min-input" value="'+e.stockMinimo+'" min="0" onchange="ajustarEpp('+e.id+',this.value,'minimo')" title="Stock mínimo"></td>';
+    f+='</tr>';
+    return f;
   }).join(''):'<tr><td colspan="8" class="empty-state">Sin resultados.</td></tr>';
 }
 function filterEpp(v){ eppBusqueda=v; renderEpp(); }
@@ -2268,7 +2269,7 @@ function renderHistAsignaciones(){
             <span><b>${a.codigo}</b> — ${a.epp}${a.talla?' <span style="background:#EEEDFE;color:#3C3489;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600">Talla: '+a.talla+'</span>':''} <span style="color:#bbb;font-weight:400;font-size:12px">× ${a.cantidad}</span></span>
             <span style="font-size:12px;color:#888">${a.fecha}</span>
           </div>
-          ${currentUser&&currentUser.rol==='admin'?`<button onclick="borrarAsignacion(${a.id})" style="background:none;border:1px solid #F7C1C1;color:#A32D2D;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;white-space:nowrap;font-family:inherit">🗑 Borrar</button>`:''}
+          '+((currentUser&&currentUser.rol==="admin")?'<button onclick="borrarAsignacion('+a.id+')" style="background:none;border:1px solid #F7C1C1;color:#A32D2D;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;white-space:nowrap;font-family:inherit">🗑 Borrar</button>':'')+'
         </div>
         <div class="hdet" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:12px">
           <span>👷 <b>${a.trabajador}</b>${a.cedula?' (CC: '+a.cedula+')':''}</span>
