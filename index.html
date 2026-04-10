@@ -361,21 +361,20 @@ textarea{resize:vertical;min-height:75px}
       <h1>Sistema de Inventario</h1>
       <p>Roma Integral Group</p>
     </div>
-    <div id="login-error" class="login-error"></div>
+    <div id="login-err" class="login-error"></div>
     <div class="login-field">
       <label>Usuario</label>
-      <input type="text" id="login-user" autocomplete="off">
+      <input type="text" id="inp-user" autocomplete="off">
     </div>
     <div class="login-field">
       <label>Contraseña</label>
-      <input type="password" id="login-pass">
+      <input type="password" id="inp-pass">
     </div>
-    <button class="btn-login" onclick="login()">Ingresar</button>
+    <button class="btn-login" onclick="doLogin()">Ingresar</button>
     <div style="text-align:center;margin-top:16px;font-size:12px;color:#888">
       Demo: admin / admin123
     </div>
   </div>
-</div>
 </div>
 
 <!-- APP -->
@@ -387,7 +386,7 @@ textarea{resize:vertical;min-height:75px}
         <span style="width:7px;height:7px;border-radius:50%;background:#4ade80;display:inline-block"></span> En línea
       </span>
       <button onclick="exportarExcel()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:white;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit">📊 Exportar Excel</button>
-      <div class="user-pill"><span id="current-user">Usuario</span> <span style="opacity:.7">|</span> <span id="current-role">Rol</span>👤 <span id="hdr-user"></span></div>
+      <div class="user-pill">👤 <span id="hdr-user"></span></div>
       <button class="btn-logout" onclick="doLogout()">Cerrar sesión</button>
     </div>
   </header>
@@ -1114,12 +1113,7 @@ get(dbRef).then(snapshot=>{
     </div>`;
 });
 
-function mostrarLogin(){
-  const logoSrc = document.querySelector('#login-screen img') ? document.querySelector('#login-screen img').src : '';
-  document.getElementById('login-screen').innerHTML=`
-  <div style="background:white;border-radius:16px;padding:40px 36px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-    <div style="text-align:center;margin-bottom:28px">
-      <img src="${logoSrc||''}" style="height:80px;object-fit:contain;margin-bottom:8px" onerror="this.style.display='none'" alt="Roma Integral Group">
+function mostrarLogin(){ /* Deshabilitado - ya tenemos form */ }" style="height:80px;object-fit:contain;margin-bottom:8px" onerror="this.style.display='none'" alt="Roma Integral Group">
       <h1 style="font-size:20px;font-weight:600;color:#1B6B2F;margin-top:6px">Roma Integral Group</h1>
       <p style="font-size:13px;color:#888;margin-top:4px">Sistema de Inventario — Bodega</p>
     </div>
@@ -2675,28 +2669,10 @@ function dlCSV(content,filename){}
 
 </script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
-function login(){
-  const user = document.getElementById('login-user').value.trim();
-  const pass = document.getElementById('login-pass').value;
-  const errorDiv = document.getElementById('login-error');
-  
-  // Usuario demo temporal - cámbialo cuando conectes backend
-  if(user === 'admin' && pass === 'admin123'){
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('app-screen').style.display='block';
-    errorDiv.style.display='none';
-    document.getElementById('current-user').textContent = user;
-    document.getElementById('current-role').textContent = 'Admin';
-    showSec('epp'); // mostrar primera sección por defecto
-    renderEpp(); // cargar datos iniciales
-  } else {
-    errorDiv.textContent = 'Usuario o contraseña incorrectos';
-    errorDiv.style.display='block';
-  }
-}
-
-// Mostrar login al cargar
+// Inicializar al cargar
 window.addEventListener('load', function() {
+  initDB();
+  initUsuarios(); // Esto crea el usuario admin/admin123 si no existe
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-screen').style.display='none';
 });
