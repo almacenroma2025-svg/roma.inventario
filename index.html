@@ -1,196 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<!-- Playables SDK -->
-<script>// Playables SDK v1.0.0
-// Game lifecycle bridge: rAF-based game-ready detection + event communication
-(function() {
-  'use strict';
-
-  // Idempotency: skip if already initialized (e.g., server-side injection
-  // followed by client-side inject-javascript via the Bloks webview component).
-  if (window.playablesSDK) return;
-
-  var HANDLER_NAME = 'playablesGameEventHandler';
-  var ANDROID_BRIDGE_NAME = '_MetaPlayablesBridge';
-  var RAF_FRAME_THRESHOLD = 3;
-
-  var gameReadySent = false;
-  var firstInteractionSent = false;
-  var errorSent = false;
-  var frameCount = 0;
-  var originalRAF = window.requestAnimationFrame;
-
-  // --- Transport Layer ---
-
-  function hasIOSBridge() {
-    return !!(window.webkit &&
-              window.webkit.messageHandlers &&
-              window.webkit.messageHandlers[HANDLER_NAME]);
-  }
-
-  function hasAndroidBridge() {
-    return !!(window[ANDROID_BRIDGE_NAME] &&
-              typeof window[ANDROID_BRIDGE_NAME].postEvent === 'function');
-  }
-
-  function isInIframe() {
-    return !!(window.parent && window.parent !== window);
-  }
-
-  function sendEvent(eventName, payload) {
-    var message = {
-      type: eventName,
-      payload: payload || {},
-      timestamp: Date.now()
-    };
-
-    if (hasIOSBridge()) {
-      try {
-        window.webkit.messageHandlers[HANDLER_NAME].postMessage(message);
-      } catch (e) { /* ignore */ }
-      return;
-    }
-
-    if (hasAndroidBridge()) {
-    try {
-      var p = payload || {};
-      p.__secureToken = window.__fbAndroidBridgeAuthToken || '';
-      window[ANDROID_BRIDGE_NAME].postEvent(
-        eventName,
-        JSON.stringify(p)
-      );
-    } catch (e) { /* ignore */ }
-    return;
-  }
-
-    if (isInIframe()) {
-      try {
-        window.parent.postMessage(message, '*');
-      } catch (e) { /* ignore */ }
-      return;
-    }
-  }
-
-  // --- rAF Game-Ready Detection ---
-
-  function onFrame() {
-    if (gameReadySent) return;
-
-    frameCount++;
-    if (frameCount >= RAF_FRAME_THRESHOLD) {
-      gameReadySent = true;
-      sendEvent('game_ready', {
-        frame_count: frameCount,
-        detected_at: Date.now()
-      });
-      return;
-    }
-
-    originalRAF.call(window, onFrame);
-  }
-
-  if (originalRAF) {
-    window.requestAnimationFrame = function(callback) {
-      if (!gameReadySent) {
-        return originalRAF.call(window, function(timestamp) {
-          frameCount++;
-          if (frameCount >= RAF_FRAME_THRESHOLD && !gameReadySent) {
-            gameReadySent = true;
-            sendEvent('game_ready', {
-              frame_count: frameCount,
-              detected_at: Date.now()
-            });
-          }
-          callback(timestamp);
-        });
-      }
-      return originalRAF.call(window, callback);
-    };
-  }
-
-  // --- First User Interaction Detection ---
-
-  function setupFirstInteractionDetection() {
-    var events = ['touchstart', 'mousedown', 'keydown'];
-
-    function onFirstInteraction() {
-      if (firstInteractionSent) return;
-      firstInteractionSent = true;
-      sendEvent('user_interaction_start', null);
-
-      for (var i = 0; i < events.length; i++) {
-        document.removeEventListener(events[i], onFirstInteraction, true);
-      }
-    }
-
-    for (var i = 0; i < events.length; i++) {
-      document.addEventListener(events[i], onFirstInteraction, true);
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupFirstInteractionDetection);
-  } else {
-    setupFirstInteractionDetection();
-  }
-
-  // --- Auto Error Capture ---
-
-  window.addEventListener('error', function(event) {
-    if (errorSent) return;
-    errorSent = true;
-    sendEvent('error', {
-      message: event.message || 'Unknown error',
-      source: event.filename || '',
-      lineno: event.lineno || 0,
-      colno: event.colno || 0,
-      auto_captured: true
-    });
-  });
-
-  window.addEventListener('unhandledrejection', function(event) {
-    if (errorSent) return;
-    errorSent = true;
-    var reason = event.reason;
-    sendEvent('error', {
-      message: (reason instanceof Error) ? reason.message : String(reason),
-      type: 'unhandled_promise_rejection',
-      auto_captured: true
-    });
-  });
-
-  // --- Public API ---
-
-  window.playablesSDK = {
-    complete: function(score) {
-      sendEvent('game_ended', {
-        score: score,
-        completed: true
-      });
-    },
-
-    error: function(message) {
-      if (errorSent) return;
-      errorSent = true;
-      sendEvent('error', {
-        message: message || 'Unknown error',
-        auto_captured: false
-      });
-    },
-
-    sendEvent: function(eventName, payload) {
-      if (!eventName || typeof eventName !== 'string') return;
-      sendEvent(eventName, payload);
-    }
-  };
-
-  // Kick off rAF detection in case no game code calls rAF immediately
-  if (originalRAF) {
-    originalRAF.call(window, onFrame);
-  }
-})();</script>
-<script>window.Intl=window.Intl||{};Intl.t=function(s){return(Intl._locale&&Intl._locale[s])||s;};</script>
 <meta charset="UTF-8">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -355,25 +165,11 @@ textarea{resize:vertical;min-height:75px}
 <body>
 
 <!-- LOGIN -->
-<div id="login-screen">
-  <div class="login-card">
-    <div class="login-logo">
-      <h1>Sistema de Inventario</h1>
-      <p>Roma Integral Group</p>
-    </div>
-    <div id="login-err" class="login-error"></div>
-    <div class="login-field">
-      <label>Usuario</label>
-      <input type="text" id="inp-user" autocomplete="off">
-    </div>
-    <div class="login-field">
-      <label>Contraseña</label>
-      <input type="password" id="inp-pass">
-    </div>
-    <button class="btn-login" onclick="doLogin()">Ingresar</button>
-    <div style="text-align:center;margin-top:16px;font-size:12px;color:#888">
-      Demo: admin / admin123
-    </div>
+<div id="login-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh">
+  <div style="text-align:center;color:white">
+    <div style="font-size:40px;margin-bottom:16px">⏳</div>
+    <div style="font-size:18px;font-weight:600;margin-bottom:8px">Conectando...</div>
+    <div style="font-size:13px;opacity:0.7">Roma Integral Group</div>
   </div>
 </div>
 
@@ -997,10 +793,10 @@ textarea{resize:vertical;min-height:75px}
   </div>
 </div>
 
-<script type="module">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
 // ─── FIREBASE CONFIG ─────────────────────────────────────────────
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBRmBshwrgGmRqZ86ptB6Tgh8Pu64-bvI8",
@@ -1012,9 +808,9 @@ const firebaseConfig = {
   appId: "1:484466174382:web:a37c233ef6c9542215403f"
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
-const database = getDatabase(firebaseApp);
-const dbRef = ref(database, 'inventario');
+const firebaseApp = firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+const dbRef = database.ref('inventario');
 
 // ─── ESTADO INICIAL ─────────────────────────────────────────────
 let db = null;
@@ -1051,7 +847,7 @@ function saveDB(){
   window.db = db;
   if(fbSaving) return;
   fbSaving=true;
-  set(dbRef, db).then(()=>{ fbSaving=false; }).catch(e=>{ fbSaving=false; console.error('Firebase save error:',e); });
+  dbRef.set(db).then(function(){ fbSaving=false; }).catch(function(e){ fbSaving=false; console.error('Firebase save error:',e); });
 }
 
 function nuevoMov(obj){ return {...obj, id: Date.now()+Math.floor(Math.random()*9999)}; }
@@ -1065,26 +861,24 @@ document.getElementById('login-screen').innerHTML=`
   </div>`;
 
 // ─── CARGAR DATOS DESDE FIREBASE ─────────────────────────────────
-get(dbRef).then(snapshot=>{
+dbRef.once('value').then(function(snapshot){
   if(snapshot.exists()){
     db = asegurarDB(snapshot.val());
   } else {
     db = initDB();
-    set(dbRef, db);
+    dbRef.set(db);
   }
   // Escuchar cambios en tiempo real
-  onValue(dbRef, snapshot=>{
+  dbRef.on('value', function(snapshot){
     if(!snapshot.exists()) return;
-    const remoto = asegurarDB(snapshot.val());
-    // Actualizar la referencia local Y la global
+    var remoto = asegurarDB(snapshot.val());
     db = remoto;
     window.db = remoto;
     if(!currentUser) return;
-    // Refrescar la sección activa
-    const secActiva = document.querySelector('.section.active');
+    var secActiva = document.querySelector('.section.active');
     if(!secActiva) return;
-    const id = secActiva.id.replace('sec-','');
-    const renderMap = {
+    var id = secActiva.id.replace('sec-','');
+    var renderMap = {
       'dashboard': renderDashboard,
       'equipos': renderEquipos,
       'stock': renderStock,
@@ -1093,8 +887,7 @@ get(dbRef).then(snapshot=>{
       'historial-asignaciones': renderHistAsignaciones,
       'registro-uso': renderRegistroUso,
       'reporte': renderReporte,
-      'asignar-epp': renderAsignarEpp,
-      'historial-asignaciones': renderHistAsignaciones
+      'asignar-epp': renderAsignarEpp
     };
     if(renderMap[id]) renderMap[id]();
     updateStockBadge();
@@ -1113,21 +906,30 @@ get(dbRef).then(snapshot=>{
     </div>`;
 });
 
-function mostrarLogin(){ /* Deshabilitado - ya tenemos form */ }" style="height:80px;object-fit:contain;margin-bottom:8px" onerror="this.style.display='none'" alt="Roma Integral Group">
-      <h1 style="font-size:20px;font-weight:600;color:#1B6B2F;margin-top:6px">Roma Integral Group</h1>
-      <p style="font-size:13px;color:#888;margin-top:4px">Sistema de Inventario — Bodega</p>
-    </div>
-    <div id="login-err" style="background:#FCEBEB;color:#A32D2D;border:1px solid #F7C1C1;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none">Usuario o contraseña incorrectos.</div>
-    <div style="margin-bottom:16px">
-      <label style="display:block;font-size:13px;font-weight:500;color:#555;margin-bottom:6px">Usuario</label>
-      <input type="text" id="inp-user" placeholder="Ingresa tu usuario" autocomplete="username" style="width:100%;padding:10px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-    <div style="margin-bottom:16px">
-      <label style="display:block;font-size:13px;font-weight:500;color:#555;margin-bottom:6px">Contraseña</label>
-      <input type="password" id="inp-pass" placeholder="Ingresa tu contraseña" autocomplete="current-password" style="width:100%;padding:10px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-    <button onclick="doLogin()" style="width:100%;padding:12px;background:#1a4d6e;color:white;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;font-family:inherit">Ingresar</button>
-  </div>`;
+function mostrarLogin(){
+  const logoB64 = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCACGAQoDASIAAhEBAxEB/8QAHAABAAIDAQEBAAAAAAAAAAAAAAUGBAcIAwIB/8QAOhAAAQMDAgQEBAQFBAMAAAAAAQACAwQFEQYhMRJBUWETInGBkRQyocHRBxUjQlJigrHwJDNy4fH/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8A7miIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiD/2Q==';
+  document.getElementById('login-screen').innerHTML =
+    '<div style="background:white;border-radius:16px;padding:40px 36px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-width:90vw">' +
+      '<div style="text-align:center;margin-bottom:24px">' +
+        '<img src="' + logoB64 + '" style="height:70px;object-fit:contain;margin-bottom:8px" alt="Roma Integral Group">' +
+        '<h1 style="font-size:19px;font-weight:600;color:#1B6B2F;margin:6px 0 4px">Roma Integral Group</h1>' +
+        '<p style="font-size:13px;color:#888;margin:0">Sistema de Inventario — Bodega</p>' +
+      '</div>' +
+      '<div id="login-err" style="background:#FCEBEB;color:#A32D2D;border:1px solid #F7C1C1;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none">Usuario o contraseña incorrectos.</div>' +
+      '<div style="margin-bottom:14px">' +
+        '<label style="display:block;font-size:13px;font-weight:500;color:#555;margin-bottom:6px">Usuario</label>' +
+        '<input type="text" id="inp-user" placeholder="Ingresa tu usuario" autocomplete="username" style="width:100%;padding:10px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box">' +
+      '</div>' +
+      '<div style="margin-bottom:20px">' +
+        '<label style="display:block;font-size:13px;font-weight:500;color:#555;margin-bottom:6px">Contraseña</label>' +
+        '<input type="password" id="inp-pass" placeholder="Ingresa tu contraseña" autocomplete="current-password" style="width:100%;padding:10px 14px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box">' +
+      '</div>' +
+      '<button id="btn-login" style="width:100%;padding:12px;background:#1a4d6e;color:white;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;font-family:inherit">Ingresar</button>' +
+    '</div>';
+  // Eventos del formulario de login
+  document.getElementById('btn-login').addEventListener('click', doLogin);
+  document.getElementById('inp-pass').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+  document.getElementById('inp-user').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
 }
 
 
@@ -1612,7 +1414,7 @@ function renderStock(){
     f+='<td style="text-align:center;font-weight:600;color:'+(bajo?'#E24B4A':'#3B6D11')+'">'+s.enBodega+'</td>';
     f+='<td style="text-align:center">'+s.stockMinimo+'</td>';
     f+='<td><span class="badge '+(bajo?'alerta':'ok-stock')+'">'+(bajo?'⚠ Bajo':'OK')+'</span></td>';
-    if(isAdmin) f+='<td><input type="number" class="edit-input" value="'+s.enBodega+'" min="0" onchange="ajustarStock('+s.id+',this.value,'bodega')" title="Stock en bodega"><input type="number" class="min-input" value="'+s.stockMinimo+'" min="0" onchange="ajustarStock('+s.id+',this.value,'minimo')" title="Stock mínimo"></td>';
+    if(isAdmin) f+='<td><input type="number" class="edit-input" value="'+s.enBodega+'" min="0" onchange="ajustarStock('+s.id+',this.value,\'bodega\')" title="Stock en bodega"><input type="number" class="min-input" value="'+s.stockMinimo+'" min="0" onchange="ajustarStock('+s.id+',this.value,\'minimo\')" title="Stock mínimo"></td>';
     f+='</tr>';
     return f;
   }).join(''):'<tr><td colspan="7" class="empty-state">Sin resultados.</td></tr>';
@@ -1900,7 +1702,7 @@ function renderEpp(){
     f+='<td style="text-align:center;font-weight:700;color:'+(bajo?'#E24B4A':'#3B6D11')+'">'+e.enBodega+'</td>';
     f+='<td style="text-align:center">'+e.stockMinimo+'</td>';
     f+='<td><span class="badge '+(bajo?'alerta':'ok-stock')+'">'+(bajo?'⚠ Bajo':'OK')+'</span></td>';
-    if(isAdmin) f+='<td><input type="number" class="edit-input" value="'+e.enBodega+'" min="0" onchange="ajustarEpp('+e.id+',this.value,'bodega')" title="Stock bodega"><input type="number" class="min-input" value="'+e.stockMinimo+'" min="0" onchange="ajustarEpp('+e.id+',this.value,'minimo')" title="Stock mínimo"></td>';
+    if(isAdmin) f+='<td><input type="number" class="edit-input" value="'+e.enBodega+'" min="0" onchange="ajustarEpp('+e.id+',this.value,\'bodega\')" title="Stock bodega"><input type="number" class="min-input" value="'+e.stockMinimo+'" min="0" onchange="ajustarEpp('+e.id+',this.value,\'minimo\')" title="Stock mínimo"></td>';
     f+='</tr>';
     return f;
   }).join(''):'<tr><td colspan="8" class="empty-state">Sin resultados.</td></tr>';
@@ -2668,15 +2470,6 @@ function exportarCSV(){ exportarExcel(); }
 function dlCSV(content,filename){}
 
 </script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js">
-// Inicializar al cargar
-window.addEventListener('load', function() {
-  initDB();
-  initUsuarios(); // Esto crea el usuario admin/admin123 si no existe
-  document.getElementById('login-screen').style.display='flex';
-  document.getElementById('app-screen').style.display='none';
-});
-
-</script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </body>
 </html>
