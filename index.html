@@ -1290,10 +1290,31 @@ function seleccionarIngreso(id,cod,nom,cant){
   el('ing-eq').value=id;
   el('ing-busq').value='';
   el('ing-lista').style.display='none';
+  // Calcular cuántas están fuera según registros activos
+  var salidasActivas=(db.registroUso||[]).filter(function(r){ return r.equipoId===id&&r.estado==='activo'; }).length;
+  var fuera=salidasActivas>0?salidasActivas:'?';
   el('ing-sel-texto').textContent=cod+' — '+nom;
   el('ing-seleccionado').style.display='flex';
   el('ing-stock-num').textContent=cant;
   el('ing-stock-info').style.display='block';
+  // Mostrar info de cuántas están fuera
+  var infoExtra=el('ing-fuera-info');
+  if(!infoExtra){
+    infoExtra=document.createElement('div');
+    infoExtra.id='ing-fuera-info';
+    infoExtra.style.cssText='background:#FAEEDA;border-radius:8px;padding:8px 14px;font-size:13px;margin-bottom:4px;border:1px solid #FAC775;';
+    el('ing-stock-info').parentNode.insertBefore(infoExtra,el('ing-stock-info').nextSibling);
+  }
+  if(salidasActivas>0){
+    infoExtra.style.display='block';
+    infoExtra.innerHTML='⚠️ Máximo a ingresar: <b>'+salidasActivas+'</b> unidad(es) (las que están fuera según registros activos)';
+    el('ing-cant').max=salidasActivas;
+    el('ing-cant').value=salidasActivas;
+  } else {
+    infoExtra.style.display='none';
+    el('ing-cant').removeAttribute('max');
+    el('ing-cant').value=1;
+  }
 }
 function limpiarIngreso(){
   el('ing-eq').value='';
@@ -1374,8 +1395,16 @@ function registrarIngreso(){
   const eq=db.equipos.find(e=>e.id===eqId);
   if(!eq){ notif('Equipo no encontrado.','err'); return; }
   const antes=eq.cantidad||0;
-  let detalle=`Cant: ${cant}. Inspección: ${v('ing-cond')}.`;
-  if(v('ing-rep')==='si') detalle+=` Requiere reparación — ${v('ing-tall')} — ${v('ing-dano')}`;
+  // Validar que no se ingrese más de lo que salió
+  // Buscamos cuántas unidades tiene el equipo según salidas activas
+  const salidasActivas=(db.registroUso||[]).filter(r=>r.equipoId===eq.id&&r.estado==='activo').length;
+  const maxIngreso=salidasActivas>0?salidasActivas:cant;
+  if(cant>maxIngreso){
+    notif('🚫 Solo puede ingresar máximo '+maxIngreso+' unidad(es) de "'+eq.nombre+'" — es lo que está fuera de bodega.','err');
+    return;
+  }
+  let detalle='Cant: '+cant+'. Inspección: '+v('ing-cond')+'.';
+  if(v('ing-rep')==='si') detalle+=' Requiere reparación — '+v('ing-tall')+' — '+v('ing-dano');
   else detalle+=' Sin daños.';
   eq.cantidad = antes + cant;
   eq.estado = v('ing-est');
@@ -1387,7 +1416,7 @@ function registrarIngreso(){
   }
   db.movimientos.unshift(nuevoMov({tipo:'retorno',fecha,equipoId:eq.id,equipo:eq.nombre,codigo:eq.codigo,detalle,responsable:resp,obs:v('ing-obs').trim()}));
   saveDB();
-  notif(`✅ Ingreso de ${cant} "${eq.nombre}" registrado. Total en bodega: ${eq.cantidad}.`);
+  notif('✅ Ingreso de '+cant+' "'+eq.nombre+'" registrado. Total en bodega: '+eq.cantidad+'.');
   limpiarIngreso();
   el('ing-resp').value=''; el('ing-obs').value='';
   showSec('dashboard');
@@ -2249,25 +2278,32 @@ function renderHistAsignaciones(){
     count.style.color='#888';
   }
   if(!lista.length){ c.innerHTML='<div class="empty-state">Sin resultados para los filtros aplicados.</div>'; return; }
-  c.innerHTML=lista.map(a=>`
-    <div class="hist-item">
-      <div class="hdot salida"></div>
-      <div class="hinfo" style="flex:1">
-        <div class="htit" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span><b>${a.codigo}</b> — ${a.epp}${a.talla?' <span style="background:#EEEDFE;color:#3C3489;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600">Talla: '+a.talla+'</span>':''} <span style="color:#bbb;font-weight:400;font-size:12px">× ${a.cantidad}</span></span>
-            <span style="font-size:12px;color:#888">${a.fecha}</span>
-          </div>
-          '+((currentUser&&currentUser.rol==="admin")?'<button onclick="borrarAsignacion('+a.id+')" style="background:none;border:1px solid #F7C1C1;color:#A32D2D;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;white-space:nowrap;font-family:inherit">🗑 Borrar</button>':'')+'
-        </div>
-        <div class="hdet" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:12px">
-          <span>👷 <b>${a.trabajador}</b>${a.cedula?' (CC: '+a.cedula+')':''}</span>
-          ${a.proyecto?`<span>🏗️ ${a.proyecto}</span>`:''}
-          <span>📦 Entregó: ${a.responsable}</span>
-          ${a.obs?`<span style="color:#aaa">📝 ${a.obs}</span>`:''}
-        </div>
-      </div>
-    </div>`).join('');
+  var isAdmin=currentUser&&currentUser.rol==='admin';
+  c.innerHTML=lista.map(function(a){
+    var talla=a.talla?'<span style="background:#EEEDFE;color:#3C3489;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600">Talla: '+a.talla+'</span>':'';
+    var borrar=isAdmin?'<button onclick="borrarAsignacion('+a.id+')" style="background:none;border:1px solid #F7C1C1;color:#A32D2D;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;white-space:nowrap;font-family:inherit">🗑 Borrar</button>':'';
+    var cedula=a.cedula?' (CC: '+a.cedula+')':'';
+    var proyecto=a.proyecto?'<span>🏗️ '+a.proyecto+'</span>':'';
+    var obs=a.obs?'<span style="color:#aaa">📝 '+a.obs+'</span>':'';
+    return '<div class="hist-item">' +
+      '<div class="hdot salida"></div>' +
+      '<div class="hinfo" style="flex:1">' +
+        '<div class="htit" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">' +
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<span><b>'+a.codigo+'</b> — '+a.epp+' '+talla+' <span style="color:#bbb;font-weight:400;font-size:12px">× '+a.cantidad+'</span></span>' +
+            '<span style="font-size:12px;color:#888">'+a.fecha+'</span>' +
+          '</div>' +
+          borrar +
+        '</div>' +
+        '<div class="hdet" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:12px">' +
+          '<span>👷 <b>'+a.trabajador+'</b>'+cedula+'</span>' +
+          proyecto +
+          '<span>📦 Entregó: '+a.responsable+'</span>' +
+          obs +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
 
 function limpiarFiltrosHAsg(){
