@@ -1276,13 +1276,14 @@ function filtrarIngreso(busq){
   if(!q){ lista.style.display='none'; return; }
   const res=db.equipos.filter(e=>e.codigo.toLowerCase().includes(q)||e.nombre.toLowerCase().includes(q));
   if(!res.length){ lista.innerHTML='<div class="eq-item" style="color:#aaa">Sin resultados</div>'; lista.style.display='block'; return; }
-  lista.innerHTML=res.slice(0,20).map(e=>{
-    const cant=e.cantidad||0;
-    return`<div class="eq-item" onclick="seleccionarIngreso(${e.id},'${e.codigo}','${e.nombre.replace(/'/g,"\\'")}',${cant})">
-      <span class="eq-item-cod">${e.codigo}</span>
-      <span class="eq-item-nom">${e.nombre}</span>
-      <span class="eq-item-est ${cant>0?'disp':'fuera'}">${cant} en bodega</span>
-    </div>`;
+  lista.innerHTML=res.slice(0,20).map(function(e){
+    const salidas=(db.registroUso||[]).filter(function(r){ return r.equipoId===e.id&&r.estado==='activo'; }).length;
+    const tieneFuera=salidas>0;
+    return '<div class="eq-item" '+(tieneFuera?'onclick="seleccionarIngreso('+e.id+',\''+e.codigo+'\',\''+e.nombre.replace(/'/g,"\\'")+'\',' +e.cantidad+')"':'style="opacity:0.45;cursor:not-allowed"')+'>'
+      +'<span class="eq-item-cod">'+e.codigo+'</span>'
+      +'<span class="eq-item-nom">'+e.nombre+'</span>'
+      +'<span class="eq-item-est '+(tieneFuera?'fuera':'disp')+'">'+(tieneFuera?salidas+' fuera':'En bodega')+'</span>'
+      +'</div>';
   }).join('');
   lista.style.display='block';
 }
@@ -1290,30 +1291,33 @@ function seleccionarIngreso(id,cod,nom,cant){
   el('ing-eq').value=id;
   el('ing-busq').value='';
   el('ing-lista').style.display='none';
-  // Calcular cuántas están fuera según registros activos
-  var salidasActivas=(db.registroUso||[]).filter(function(r){ return r.equipoId===id&&r.estado==='activo'; }).length;
-  var fuera=salidasActivas>0?salidasActivas:'?';
   el('ing-sel-texto').textContent=cod+' — '+nom;
   el('ing-seleccionado').style.display='flex';
   el('ing-stock-num').textContent=cant;
   el('ing-stock-info').style.display='block';
-  // Mostrar info de cuántas están fuera
+  // Calcular cuántas están fuera en registros activos
+  var salidasActivas=(db.registroUso||[]).filter(function(r){ return r.equipoId===id&&r.estado==='activo'; }).length;
   var infoExtra=el('ing-fuera-info');
   if(!infoExtra){
     infoExtra=document.createElement('div');
     infoExtra.id='ing-fuera-info';
-    infoExtra.style.cssText='background:#FAEEDA;border-radius:8px;padding:8px 14px;font-size:13px;margin-bottom:4px;border:1px solid #FAC775;';
+    infoExtra.style.cssText='border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:4px;border:1px solid;';
     el('ing-stock-info').parentNode.insertBefore(infoExtra,el('ing-stock-info').nextSibling);
   }
   if(salidasActivas>0){
     infoExtra.style.display='block';
-    infoExtra.innerHTML='⚠️ Máximo a ingresar: <b>'+salidasActivas+'</b> unidad(es) (las que están fuera según registros activos)';
+    infoExtra.style.background='#FAEEDA';
+    infoExtra.style.borderColor='#FAC775';
+    infoExtra.innerHTML='📤 Fuera de bodega: <b>'+salidasActivas+'</b> unidad(es). Solo puede ingresar hasta ese número.';
     el('ing-cant').max=salidasActivas;
     el('ing-cant').value=salidasActivas;
   } else {
-    infoExtra.style.display='none';
-    el('ing-cant').removeAttribute('max');
-    el('ing-cant').value=1;
+    infoExtra.style.display='block';
+    infoExtra.style.background='#FCEBEB';
+    infoExtra.style.borderColor='#F7C1C1';
+    infoExtra.innerHTML='🚫 Este equipo no tiene unidades fuera de bodega. Para agregar stock nuevo usa <b>➕ Agregar nuevo</b>.';
+    el('ing-cant').max=0;
+    el('ing-cant').value=0;
   }
 }
 function limpiarIngreso(){
@@ -1389,29 +1393,35 @@ function toggleRep(){
 function registrarIngreso(){
   const eqId=parseInt(el('ing-eq').value);
   const resp=v('ing-resp').trim(), fecha=v('ing-fecha');
-  const cant=parseInt(el('ing-cant').value)||1;
+  const cant=parseInt(el('ing-cant').value)||0;
   if(!eqId||isNaN(eqId)){ notif('Busca y selecciona un equipo primero.','err'); return; }
   if(!resp||!fecha){ notif('Completa todos los campos requeridos.','err'); return; }
   const eq=db.equipos.find(e=>e.id===eqId);
   if(!eq){ notif('Equipo no encontrado.','err'); return; }
-  const antes=eq.cantidad||0;
-  // Validar que no se ingrese más de lo que salió
-  // Buscamos cuántas unidades tiene el equipo según salidas activas
+  // Verificar cuántas unidades están fuera
   const salidasActivas=(db.registroUso||[]).filter(r=>r.equipoId===eq.id&&r.estado==='activo').length;
-  const maxIngreso=salidasActivas>0?salidasActivas:cant;
-  if(cant>maxIngreso){
-    notif('🚫 Solo puede ingresar máximo '+maxIngreso+' unidad(es) de "'+eq.nombre+'" — es lo que está fuera de bodega.','err');
+  if(salidasActivas===0){
+    notif('🚫 "'+eq.nombre+'" no tiene unidades fuera de bodega. Para agregar stock nuevo usa ➕ Agregar nuevo.','err');
     return;
   }
+  if(cant<=0){
+    notif('Indica cuántas unidades están ingresando.','err');
+    return;
+  }
+  if(cant>salidasActivas){
+    notif('🚫 Solo puede ingresar máximo '+salidasActivas+' unidad(es) de "'+eq.nombre+'" — es lo que está fuera de bodega.','err');
+    return;
+  }
+  const antes=eq.cantidad||0;
   let detalle='Cant: '+cant+'. Inspección: '+v('ing-cond')+'.';
   if(v('ing-rep')==='si') detalle+=' Requiere reparación — '+v('ing-tall')+' — '+v('ing-dano');
   else detalle+=' Sin daños.';
   eq.cantidad = antes + cant;
   eq.estado = v('ing-est');
   eq.condicion = v('ing-cond');
-  // Cerrar registro de uso activo para este equipo
+  // Cerrar registro de uso activo
   if(db.registroUso){
-    const reg = db.registroUso.find(r=>r.equipoId===eq.id&&r.estado==='activo');
+    const reg=db.registroUso.find(r=>r.equipoId===eq.id&&r.estado==='activo');
     if(reg){ reg.fechaIngreso=fecha; reg.estado='cerrado'; }
   }
   db.movimientos.unshift(nuevoMov({tipo:'retorno',fecha,equipoId:eq.id,equipo:eq.nombre,codigo:eq.codigo,detalle,responsable:resp,obs:v('ing-obs').trim()}));
