@@ -1838,12 +1838,16 @@ function filtrarIngresoEpp(busq){
   if(!q){ lista.style.display='none'; return; }
   const res=(db.epp||[]).filter(e=>e.codigo.toLowerCase().includes(q)||e.descripcion.toLowerCase().includes(q));
   if(!res.length){ lista.innerHTML='<div class="eq-item" style="color:#aaa">Sin resultados</div>'; lista.style.display='block'; return; }
-  lista.innerHTML=res.slice(0,20).map(e=>`
-    <div class="eq-item" onclick="seleccionarIngresoEpp(${e.id},'${e.codigo}','${e.descripcion.replace(/'/g,"\\'")}',${e.enBodega})">
-      <span class="eq-item-cod">${e.codigo}</span>
-      <span class="eq-item-nom">${e.descripcion}${e.talla?' ('+e.talla+')':''}</span>
-      <span class="eq-item-est disp">${e.enBodega} en bodega</span>
-    </div>`).join('');
+  // Calcular asignaciones activas por EPP
+  lista.innerHTML=res.slice(0,20).map(function(e){
+    const asigActivas=(db.asignacionesEpp||[]).filter(function(a){ return a.eppId===e.id; }).length;
+    const tieneFuera=asigActivas>0;
+    return '<div class="eq-item" '+(tieneFuera?'onclick="seleccionarIngresoEpp('+e.id+',\''+e.codigo+'\',\''+e.descripcion.replace(/'/g,"\\'")+'\','+e.enBodega+')"':'style="opacity:0.45;cursor:not-allowed"')+'>'
+      +'<span class="eq-item-cod">'+e.codigo+'</span>'
+      +'<span class="eq-item-nom">'+e.descripcion+(e.talla?' ('+e.talla+')':'')+'</span>'
+      +'<span class="eq-item-est '+(tieneFuera?'fuera':'disp')+'">'+(tieneFuera?asigActivas+' asignados':'En bodega')+'</span>'
+      +'</div>';
+  }).join('');
   lista.style.display='block';
 }
 function seleccionarIngresoEpp(id,cod,nom,cant){
@@ -1854,29 +1858,63 @@ function seleccionarIngresoEpp(id,cod,nom,cant){
   el('iepp-seleccionado').style.display='flex';
   el('iepp-stock-num').textContent=cant;
   el('iepp-stock-info').style.display='block';
+  const asigActivas=(db.asignacionesEpp||[]).filter(function(a){ return a.eppId===id; }).length;
+  var infoEpp=el('iepp-fuera-info');
+  if(!infoEpp){
+    infoEpp=document.createElement('div');
+    infoEpp.id='iepp-fuera-info';
+    infoEpp.style.cssText='border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:4px;border:1px solid;';
+    el('iepp-stock-info').parentNode.insertBefore(infoEpp,el('iepp-stock-info').nextSibling);
+  }
+  if(asigActivas>0){
+    infoEpp.style.display='block';
+    infoEpp.style.background='#FAEEDA';
+    infoEpp.style.borderColor='#FAC775';
+    infoEpp.innerHTML='📤 Asignados actualmente: <b>'+asigActivas+'</b> unidad(es). Solo puede devolver hasta ese número.';
+    el('iepp-cant').max=asigActivas;
+    el('iepp-cant').value=asigActivas;
+  } else {
+    infoEpp.style.display='block';
+    infoEpp.style.background='#FCEBEB';
+    infoEpp.style.borderColor='#F7C1C1';
+    infoEpp.innerHTML='🚫 Este EPP no tiene unidades asignadas fuera. Para agregar stock nuevo usa <b>🛒 Compra EPP consumibles</b>.';
+    el('iepp-cant').max=0;
+    el('iepp-cant').value=0;
+  }
 }
 function limpiarIngresoEpp(){
   el('iepp-id').value=''; el('iepp-busq').value='';
   el('iepp-seleccionado').style.display='none';
   el('iepp-lista').style.display='none';
   el('iepp-stock-info').style.display='none';
+  var infoEpp=el('iepp-fuera-info');
+  if(infoEpp) infoEpp.style.display='none';
   el('iepp-cant').value=1;
 }
 function registrarIngresoEpp(){
   const eppId=parseInt(el('iepp-id').value);
-  const cant=parseInt(el('iepp-cant').value)||1;
+  const cant=parseInt(el('iepp-cant').value)||0;
   const fecha=v('iepp-fecha'), resp=v('iepp-resp').trim();
   if(!eppId||isNaN(eppId)){ notif('Busca y selecciona un EPP primero.','err'); return; }
   if(!resp||!fecha){ notif('Completa fecha y responsable.','err'); return; }
   const epp=db.epp.find(e=>e.id===eppId);
   if(!epp){ notif('EPP no encontrado.','err'); return; }
-  const antes=epp.enBodega;
+  const asigActivas=(db.asignacionesEpp||[]).filter(function(a){ return a.eppId===eppId; }).length;
+  if(asigActivas===0){
+    notif('🚫 "'+epp.descripcion+'" no tiene unidades asignadas fuera. Para agregar stock nuevo usa 🛒 Compra EPP consumibles.','err');
+    return;
+  }
+  if(cant<=0){ notif('Indica cuántas unidades están ingresando.','err'); return; }
+  if(cant>asigActivas){
+    notif('🚫 Solo puede ingresar máximo '+asigActivas+' unidad(es) — es lo que está asignado fuera de bodega.','err');
+    return;
+  }
   epp.enBodega+=cant;
   const proveedor=v('iepp-proveedor').trim();
-  db.movimientos.unshift(nuevoMov({tipo:'entrada',fecha,equipoId:null,equipo:epp.descripcion,codigo:epp.codigo,
-    detalle:`Ingreso EPP: ${cant} unidades${proveedor?' — Proveedor: '+proveedor:''}`,responsable:resp,obs:v('iepp-obs').trim()}));
+  db.movimientos.unshift(nuevoMov({tipo:'retorno',fecha,equipoId:null,equipo:epp.descripcion,codigo:epp.codigo,
+    detalle:'Devolución EPP: '+cant+' unidades'+(proveedor?' — '+proveedor:''),responsable:resp,obs:v('iepp-obs').trim()}));
   saveDB();
-  notif(`✅ ${cant} "${epp.descripcion}" ingresados. Total bodega: ${epp.enBodega}.`);
+  notif('✅ '+cant+' "'+epp.descripcion+'" ingresados a bodega. Total: '+epp.enBodega+'.');
   limpiarIngresoEpp();
   el('iepp-resp').value=''; el('iepp-proveedor').value=''; el('iepp-obs').value='';
   updateEppBadge();
@@ -1889,12 +1927,15 @@ function filtrarDevolucionEpp(busq){
   if(!q){ lista.style.display='none'; return; }
   const res=(db.epp||[]).filter(e=>e.codigo.toLowerCase().includes(q)||e.descripcion.toLowerCase().includes(q));
   if(!res.length){ lista.innerHTML='<div class="eq-item" style="color:#aaa">Sin resultados</div>'; lista.style.display='block'; return; }
-  lista.innerHTML=res.slice(0,20).map(e=>`
-    <div class="eq-item" onclick="seleccionarDevolucionEpp(${e.id},'${e.codigo}','${e.descripcion.replace(/'/g,"\\'")}',${e.enBodega})">
-      <span class="eq-item-cod">${e.codigo}</span>
-      <span class="eq-item-nom">${e.descripcion}${e.talla?' ('+e.talla+')':''}</span>
-      <span class="eq-item-est disp">${e.enBodega} en bodega</span>
-    </div>`).join('');
+  lista.innerHTML=res.slice(0,20).map(function(e){
+    const asigActivas=(db.asignacionesEpp||[]).filter(function(a){ return a.eppId===e.id; }).length;
+    const tieneFuera=asigActivas>0;
+    return '<div class="eq-item" '+(tieneFuera?'onclick="seleccionarDevolucionEpp('+e.id+',\''+e.codigo+'\',\''+e.descripcion.replace(/'/g,"\\'")+'\','+e.enBodega+')"':'style="opacity:0.45;cursor:not-allowed"')+'>'
+      +'<span class="eq-item-cod">'+e.codigo+'</span>'
+      +'<span class="eq-item-nom">'+e.descripcion+(e.talla?' ('+e.talla+')':'')+'</span>'
+      +'<span class="eq-item-est '+(tieneFuera?'fuera':'disp')+'">'+(tieneFuera?asigActivas+' asignados':'En bodega')+'</span>'
+      +'</div>';
+  }).join('');
   lista.style.display='block';
 }
 function seleccionarDevolucionEpp(id,cod,nom,cant){
@@ -1905,17 +1946,42 @@ function seleccionarDevolucionEpp(id,cod,nom,cant){
   el('depp-seleccionado').style.display='flex';
   el('depp-stock-num').textContent=cant;
   el('depp-stock-info').style.display='block';
+  const asigActivas=(db.asignacionesEpp||[]).filter(function(a){ return a.eppId===id; }).length;
+  var infoDepp=el('depp-fuera-info');
+  if(!infoDepp){
+    infoDepp=document.createElement('div');
+    infoDepp.id='depp-fuera-info';
+    infoDepp.style.cssText='border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:4px;border:1px solid;';
+    el('depp-stock-info').parentNode.insertBefore(infoDepp,el('depp-stock-info').nextSibling);
+  }
+  if(asigActivas>0){
+    infoDepp.style.display='block';
+    infoDepp.style.background='#FAEEDA';
+    infoDepp.style.borderColor='#FAC775';
+    infoDepp.innerHTML='📤 Asignados actualmente: <b>'+asigActivas+'</b> unidad(es). Máximo a devolver: '+asigActivas+'.';
+    el('depp-cant').max=asigActivas;
+    el('depp-cant').value=1;
+  } else {
+    infoDepp.style.display='block';
+    infoDepp.style.background='#FCEBEB';
+    infoDepp.style.borderColor='#F7C1C1';
+    infoDepp.innerHTML='🚫 Este EPP no tiene unidades asignadas fuera de bodega.';
+    el('depp-cant').max=0;
+    el('depp-cant').value=0;
+  }
 }
 function limpiarDevolucionEpp(){
   el('depp-id').value=''; el('depp-busq').value='';
   el('depp-seleccionado').style.display='none';
   el('depp-lista').style.display='none';
   el('depp-stock-info').style.display='none';
+  var infoDepp=el('depp-fuera-info');
+  if(infoDepp) infoDepp.style.display='none';
   el('depp-cant').value=1;
 }
 function registrarDevolucionEpp(){
   const eppId=parseInt(el('depp-id').value);
-  const cant=parseInt(el('depp-cant').value)||1;
+  const cant=parseInt(el('depp-cant').value)||0;
   const fecha=v('depp-fecha'), resp=v('depp-resp').trim();
   const trab=v('depp-trab').trim(), cedula=v('depp-cedula').trim();
   const estado=v('depp-estado');
@@ -1923,18 +1989,25 @@ function registrarDevolucionEpp(){
   if(!trab||!fecha||!resp){ notif('Completa trabajador, fecha y responsable.','err'); return; }
   const epp=db.epp.find(e=>e.id===eppId);
   if(!epp){ notif('EPP no encontrado.','err'); return; }
-  // Solo suma al stock si está en buen/regular estado
-  if(estado!=='Malo'){
-    epp.enBodega+=cant;
+  const asigActivas=(db.asignacionesEpp||[]).filter(function(a){ return a.eppId===eppId; }).length;
+  if(asigActivas===0){
+    notif('🚫 "'+epp.descripcion+'" no tiene unidades asignadas fuera de bodega.','err');
+    return;
   }
+  if(cant<=0){ notif('Indica cuántas unidades están devolviendo.','err'); return; }
+  if(cant>asigActivas){
+    notif('🚫 Solo puede devolver máximo '+asigActivas+' unidad(es) — es lo que está asignado fuera.','err');
+    return;
+  }
+  if(estado!=='Malo') epp.enBodega+=cant;
   db.movimientos.unshift(nuevoMov({tipo:'retorno',fecha,equipoId:null,equipo:epp.descripcion,codigo:epp.codigo,
-    detalle:`Devolución EPP: ${cant} unidades. Trabajador: ${trab}${cedula?' (CC: '+cedula+')':''} — Estado: ${estado}${estado==='Malo'?' (dado de baja, no suma stock)':''}`,
+    detalle:'Devolución EPP: '+cant+' unidades. Trabajador: '+trab+(cedula?' (CC: '+cedula+')':'')+' — Estado: '+estado+(estado==='Malo'?' (baja, no suma stock)':''),
     responsable:resp,obs:v('depp-obs').trim()}));
   saveDB();
   if(estado==='Malo'){
-    notif(`⚠️ Devolución registrada. EPP en mal estado — no se suma al stock (dado de baja).`);
+    notif('⚠️ Devolución registrada. EPP en mal estado — no se suma al stock.');
   } else {
-    notif(`✅ ${cant} "${epp.descripcion}" devueltos a bodega. Total: ${epp.enBodega}.`);
+    notif('✅ '+cant+' "'+epp.descripcion+'" devueltos a bodega. Total: '+epp.enBodega+'.');
   }
   limpiarDevolucionEpp();
   el('depp-trab').value=''; el('depp-cedula').value=''; el('depp-resp').value=''; el('depp-obs').value='';
